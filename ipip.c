@@ -1,3 +1,7 @@
+// ipip.c from https://www.ipip.net/download.html
+//
+// 感谢 北京天特信科技有限公司
+//
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

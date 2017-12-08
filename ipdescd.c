@@ -1,4 +1,4 @@
-// 17monipdb from ipip.net
+// 17monipdb.dat from ipip.net
 
 #include <stdio.h>
 #include <unistd.h>
