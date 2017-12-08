@@ -5,3 +5,4 @@ CMD ["/ipdescd"]
 EXPOSE 80
 
 LABEL maintainer="james@ustc.edu.cn"
+LABEL ipip.net="20170704"
