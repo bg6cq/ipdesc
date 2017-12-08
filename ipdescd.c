@@ -17,10 +17,9 @@
 
 #define MAXLEN 1024
 
-#define ERROR 1
-#define LOG   2
+int port = 80;
 
-int port=80;
+int debug = 0;
 
 void Log(char *msg)
 {
@@ -28,7 +27,6 @@ void Log(char *msg)
 	exit(1);
 }
 
-//client connection
 void respond(int cfd)
 {
 	char *p, mesg[MAXLEN], buf[MAXLEN];
@@ -39,13 +37,13 @@ void respond(int cfd)
 	if (len<=0)    // receive error
 		Log("recv() error");
 	mesg[len]=0;
-//	printf("%s", mesg);
+	if (debug) printf("%s", mesg);
 	p=mesg;
 	if(*p=='G' && *(p+1)=='E' && *(p+2)=='T' && *(p+3)==' ' && *(p+4)=='/' && *(p+5)>='0' && *(p+5)<='9')  {
     		char result[128];
     		find(p+5, result, 128);
     		len = snprintf(buf,MAXLEN,"HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n%s\r\n",result);
-//		printf("%s",buf);
+		if(debug) printf("%s",buf);
 		write (cfd, buf, len);
 	} else {
     		len = snprintf(buf,MAXLEN,"HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
@@ -54,6 +52,8 @@ void respond(int cfd)
 		write (cfd, buf, len);
 	}
 	close(cfd);
+	if(debug) printf("child exit\n");
+	exit(0);
 }
 
 
@@ -67,6 +67,7 @@ int main(int argc, char* argv[])
 		Log("Invalid port number try [1,60000]");
 	(void)signal(SIGCLD, SIG_IGN); 
 	(void)signal(SIGHUP, SIG_IGN); 
+	setvbuf(stdout, NULL, _IONBF, 0);
 	printf("Server started at port: %d\n", port);
     	init("17monipdb.dat");
 	if((listenfd = socket(AF_INET, SOCK_STREAM,0)) <0)
@@ -96,12 +97,12 @@ int main(int argc, char* argv[])
 		{	int pid;
 			pid = fork();
 			if ( pid==0 )
-			{
 				respond(cfd);
-				exit(0);
+			if(pid>0) {
+				if(debug) printf("paren close client fd\n");
+				close(cfd);
 			}
-			else close(cfd);
-		}
+		} else if(debug) printf("accept return < 0\n");
 	}
 
 	return 0;
