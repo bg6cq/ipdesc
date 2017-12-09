@@ -175,21 +175,6 @@ int main(int argc, char *argv[])
 
 				if (debug)
 					printf("close fd %d\n", events[i].data.fd);
-				//shutdown(events[i].data.fd, SHUT_WR); 
-				close(events[i].data.fd);
-				if (0) {
-					if (debug)
-						printf("epool mod pollout fd %d\n", events[i].data.fd);
-					event.data.fd = events[i].data.fd;
-					event.events = EPOLLOUT | EPOLLET;
-					if (epoll_ctl(efd, EPOLL_CTL_MOD, events[i].data.fd, &event) < 0) {
-						perror("epoll_ctl mod");
-						Log("epoll_ctl mod");
-					}
-				}
-			} else if (events[i].events & EPOLLOUT) {
-				if (debug)
-					printf("close fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
 			}
 
