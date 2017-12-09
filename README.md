@@ -32,8 +32,6 @@ docker run -d -p 90:80 --name ipdesc bg6cq/ipdesc
 
 ## 独立进程运行
 
-独立进程运行是最快的方式，由于查询的网络开销占比多，独立进程比docker方式快不少。
-
 ```
 cd /usr/src
 git clone https://github.com/bg6cq/ipdesc
