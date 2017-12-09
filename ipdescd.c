@@ -23,7 +23,7 @@
 
 int port = 80;
 
-int debug = 1;
+int debug = 0;
 
 void Log(char *msg)
 {
@@ -39,7 +39,9 @@ void respond(int cfd, char *mesg)
 	if (debug)
 		printf("From Client: %s##\n", mesg);
 	p = mesg;
-	if (*p == 'G' && *(p + 1) == 'E' && *(p + 2) == 'T' && *(p + 3) == ' ' && *(p + 4) == '/' && *(p + 5) >= '0' && *(p + 5) <= '9') {
+	if (memcmp(p, "GET /favicon.ico", 16) == 0)
+		len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
+	else if (*p == 'G' && *(p + 1) == 'E' && *(p + 2) == 'T' && *(p + 3) == ' ' && *(p + 4) == '/' && *(p + 5) >= '0' && *(p + 5) <= '9') {
 		char result[128];
 		find(p + 5, result, 128);
 		len =
@@ -114,7 +116,7 @@ int main(int argc, char *argv[])
 		int n, i;
 		n = epoll_wait(efd, events, MAXEVENTS, -1);
 		for (i = 0; i < n; i++) {
-			if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN))) {
+			if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
 				/* An error has occured on this fd, or the socket is not
 				 * ready for reading (why were we notified then?) */
 				printf("epoll error\n");
@@ -153,7 +155,7 @@ int main(int argc, char *argv[])
 						Log("epoll_ctl add new client");
 				}
 				continue;
-			} else {
+			} else if (events[i].events & EPOLLIN) {
 				/* We have data on the fd waiting to be read. Read and
 				 * display it. We must read whatever data is available
 				 * completely, as we are running in edge-triggered mode
@@ -170,6 +172,22 @@ int main(int argc, char *argv[])
 					buf[count] = 0;
 					respond(events[i].data.fd, buf);
 				}
+
+				if (debug)
+					printf("close fd %d\n", events[i].data.fd);
+				//shutdown(events[i].data.fd, SHUT_WR); 
+				close(events[i].data.fd);
+				if (0) {
+					if (debug)
+						printf("epool mod pollout fd %d\n", events[i].data.fd);
+					event.data.fd = events[i].data.fd;
+					event.events = EPOLLOUT | EPOLLET;
+					if (epoll_ctl(efd, EPOLL_CTL_MOD, events[i].data.fd, &event) < 0) {
+						perror("epoll_ctl mod");
+						Log("epoll_ctl mod");
+					}
+				}
+			} else if (events[i].events & EPOLLOUT) {
 				if (debug)
 					printf("close fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
