@@ -37,7 +37,7 @@ void respond(int cfd, char *mesg)
 	int len;
 
 	if (debug)
-		printf("From Client: %s##\n", mesg);
+		printf("From Client(fd %d): %s##\n", cfd, mesg);
 	p = mesg;
 	if (memcmp(p, "GET /favicon.ico", 16) == 0)
 		len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
@@ -51,9 +51,9 @@ void respond(int cfd, char *mesg)
 	} else
 		len = snprintf(buf, MAXLEN, "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
 			       "使用方式: /IP地址<br>IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
-			       "感谢北京天特信科技有限公司");
+			       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
 	if (debug)
-		printf("Send to Client: %s##\n", buf);
+		printf("Send to Client(fd %d): %s##\n", cfd, buf);
 	write(cfd, buf, len);
 }
 
@@ -72,17 +72,15 @@ void usage(void)
 {
 	printf("Usage:\n");
 	printf("   ipdescd [ -d ] [ tcp_port ]\n");
-	printf("        defualt port is 80\n");
+	printf("        default port is 80\n");
 	exit(0);
 }
 
 int main(int argc, char *argv[])
 {
-	int listenfd;
+	int listenfd, efd;
 	int enable = 1;
-	int efd;
-	struct epoll_event event;
-	struct epoll_event *events;
+	struct epoll_event event, *events;
 	static struct sockaddr_in serv_addr;
 
 	int c;
@@ -138,9 +136,8 @@ int main(int argc, char *argv[])
 				 * ready for reading (why were we notified then?) */
 				printf("epoll error, unknow event\n");
 				close(events[i].data.fd);
-				continue;
 			} else if (listenfd == events[i].data.fd) {
-				/* We have a notification on the listening socket, which
+				/* notification on the listening socket, which
 				 * means one or more incoming connections. */
 				while (1) {
 					struct sockaddr in_addr;
@@ -149,11 +146,9 @@ int main(int argc, char *argv[])
 					in_len = sizeof in_addr;
 					infd = accept(listenfd, &in_addr, &in_len);
 					if (infd == -1) {
-						if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-							/* We have processed all incoming
-							 * connections. */
+						if ((errno == EAGAIN) || (errno == EWOULDBLOCK))	/*  all incoming connections processed. */
 							break;
-						} else
+						else
 							Log("accept new client error");
 					}
 					if (debug) {
@@ -163,34 +158,29 @@ int main(int argc, char *argv[])
 						}
 					}
 
-					/* Make the incoming socket non-blocking and add it to the
-					 * list of fds to monitor. */
+					/* set the incoming socket non-blocking and add it to the list of fds to monitor. */
 					set_socket_non_blocking(infd);
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
 					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0)
 						Log("epoll_ctl add new client error");
 				}
-				continue;
 			} else if (events[i].events & EPOLLIN) {
-				/* We have data on the fd waiting to be read.
+				/* new data on the fd waiting to be read.
 				 *
 				 * We only read the first packet, for normal http client, it's OK */
-
 				ssize_t count;
-				char buf[512];
+				char buf[MAXLEN];
 
-				count = read(events[i].data.fd, buf, sizeof buf - 1);
+				count = read(events[i].data.fd, buf, MAXLEN - 1);
 				if (count > 0) {
 					buf[count] = 0;
 					respond(events[i].data.fd, buf);
 				}
-
 				if (debug)
 					printf("close fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
 			}
-
 		}
 	}
 }
