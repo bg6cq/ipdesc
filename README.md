@@ -6,6 +6,9 @@ ipdesc 程序基于GPL v3发布。
 
 感谢北京天特信科技有限公司
 
+特点：
+* 仅仅一个进程，占用内存约20MB，启动后不再读写任何文件，每秒钟可以响应超1万次查询
+* 使用epoll高效接口，单进程支持超1万并发连接（需要使用ulimit -n 10240设置单进程可打开的文件数）
 
 演示站点（请单击如下URL测试）：
 
@@ -27,7 +30,9 @@ docker run -d -p 90:80 --name ipdesc bg6cq/ipdesc
 
 更多关于docker信息，请参见 [https://hub.docker.com/r/bg6cq/ipdesc/](https://hub.docker.com/r/bg6cq/ipdesc/)
 
-## 独立程序运行
+## 独立进程运行
+
+独立进程运行是最快的方式，由于查询的网络开销占比多，独立进程比docker方式快不少。
 
 ```
 cd /usr/src
