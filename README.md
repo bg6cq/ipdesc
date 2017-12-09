@@ -23,6 +23,10 @@ ipdesc 程序基于GPL v3发布。
 docker pull bg6cq/ipdesc
 docker run -d -p 90:80 --name ipdesc bg6cq/ipdesc
 ```
+如果需要查看运行的调试输出，可以使用
+```
+docker run -it -p 90:80 --name ipdesc bg6cq/ipdesc /ipdescd -f -d
+```
 
 上面的90是提供服务的tcp端口，访问 http://server_ip:90/x.x.x.x 即可返回x.x.x.x的地址信息
 
@@ -38,7 +42,14 @@ git clone https://github.com/bg6cq/ipdesc
 cd ipdesc
 make
 自行下载 http://ipip.net 的免费版 17monipdb.dat
-./ipdesc 90
+./ipdesc -f 90
 ```
+
+如果需要查看运行的调试输出，可以使用
+
+```
+./ipdescd -f -d 90
+```
+
 上面的90是提供服务的tcp端口，访问 http://server_ip:90/x.x.x.x 即可返回x.x.x.x的地址信息
 

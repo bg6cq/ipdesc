@@ -1,7 +1,7 @@
 FROM scratch
 ADD 17monipdb.dat /
 ADD ipdescd /
-CMD ["/ipdescd"]
+CMD ["/ipdescd","-f"]
 
 EXPOSE 80
 

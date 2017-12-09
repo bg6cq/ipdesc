@@ -37,7 +37,7 @@ void respond(int cfd, char *mesg)
 	int len;
 
 	if (debug)
-		printf("From Client(fd %d): %s##\n", cfd, mesg);
+		printf("From Client(fd %d):\n%s##END\n", cfd, mesg);
 	p = mesg;
 	if (memcmp(p, "GET /favicon.ico", 16) == 0)
 		len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
@@ -53,7 +53,7 @@ void respond(int cfd, char *mesg)
 			       "使用方式: /IP地址<br>IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
 			       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
 	if (debug)
-		printf("Send to Client(fd %d): %s##\n", cfd, buf);
+		printf("Send to Client(fd %d):\n%s##END\n", cfd, buf);
 	write(cfd, buf, len);
 }
 
@@ -107,6 +107,7 @@ int main(int argc, char *argv[])
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	if (fork_and_do) {
+		if(debug) printf("I am parent, pid: %d\n", getpid());
 		while (1) {
 			int pid = fork();
 			if (pid == 0)	// child do the job
@@ -123,7 +124,7 @@ int main(int argc, char *argv[])
 		if (debug)
 			printf("child do the job\n");
 	}
-	printf("web server started at port: %d\n", port);
+	printf("web server started at port: %d, my pid: %d\n", port, getpid());
 
 	if (init("17monipdb.dat") != 1)
 		Log("init 17monipdb.dat error");
@@ -200,7 +201,7 @@ int main(int argc, char *argv[])
 					respond(events[i].data.fd, buf);
 				}
 				if (debug)
-					printf("close fd %d\n", events[i].data.fd);
+					printf("close fd %d\n\n", events[i].data.fd);
 				close(events[i].data.fd);
 			}
 		}
