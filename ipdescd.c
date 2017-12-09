@@ -22,7 +22,7 @@
 #define MAXLEN 1024
 
 int port = 80;
-
+int fork_and_do = 0;
 int debug = 0;
 
 void Log(char *msg)
@@ -71,7 +71,9 @@ void set_socket_non_blocking(int fd)
 void usage(void)
 {
 	printf("Usage:\n");
-	printf("   ipdescd [ -d ] [ tcp_port ]\n");
+	printf("   ipdescd [ -d ] [ -f ] [ tcp_port ]\n");
+	printf("        -d debug\n");
+	printf("        -f fork and do\n");
 	printf("        default port is 80\n");
 	exit(0);
 }
@@ -84,10 +86,13 @@ int main(int argc, char *argv[])
 	static struct sockaddr_in serv_addr;
 
 	int c;
-	while ((c = getopt(argc, argv, "dh")) != EOF)
+	while ((c = getopt(argc, argv, "dfh")) != EOF)
 		switch (c) {
 		case 'd':
 			debug = 1;
+			break;
+		case 'f':
+			fork_and_do = 1;
 			break;
 		case 'h':
 			usage();
@@ -101,6 +106,23 @@ int main(int argc, char *argv[])
 	(void)signal(SIGHUP, SIG_IGN);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
+	if (fork_and_do) {
+		while (1) {
+			int pid = fork();
+			if (pid == 0)	// child do the job
+				break;
+			else {
+				if (debug)
+					printf("parent wait child\n");
+				wait(NULL);
+			}
+			if (debug)
+				printf("child exit? I will restart it.\n");
+			sleep(2);
+		}
+		if (debug)
+			printf("child do the job\n");
+	}
 	printf("web server started at port: %d\n", port);
 
 	if (init("17monipdb.dat") != 1)
