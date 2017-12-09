@@ -12,7 +12,7 @@ ipdesc 程序基于GPL v3发布。
 
 ```
 docker pull bg6cq/ipdesc
-docker run -d -p 90:80 ipdesc
+docker run -d -p 90:80 --name ipdesc bg6cq/ipdesc
 ```
 
 上面的90是提供服务的tcp端口，访问 http://server_ip:90/x.x.x.x 即可返回x.x.x.x的地址信息
