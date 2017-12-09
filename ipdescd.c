@@ -68,6 +68,14 @@ void set_socket_non_blocking(int fd)
 		Log("fcntl setfl error");
 }
 
+void usage(void)
+{
+	printf("Usage:\n");
+	printf("   ipdescd [ -d ] [ tcp_port ]\n");
+	printf("        defualt port is 80\n");
+	exit(0);
+}
+
 int main(int argc, char *argv[])
 {
 	int listenfd;
@@ -77,8 +85,17 @@ int main(int argc, char *argv[])
 	struct epoll_event *events;
 	static struct sockaddr_in serv_addr;
 
-	if (argc > 1)
-		port = atoi(argv[1]);
+	int c;
+	while ((c = getopt(argc, argv, "dh")) != EOF)
+		switch (c) {
+		case 'd':
+			debug = 1;
+			break;
+		case 'h':
+			usage();
+		};
+	if (optind == argc - 1)
+		port = atoi(argv[optind]);
 	if (port < 0 || port > 65535)
 		Log("Invalid port number try [1,65535]");
 
@@ -93,7 +110,7 @@ int main(int argc, char *argv[])
 	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 		Log("socket error");
 	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-		Log("setsockopt(SO_REUSEADDR) failed");
+		Log("setsockopt(SO_REUSEADDR) error");
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serv_addr.sin_port = htons(port);
@@ -103,7 +120,7 @@ int main(int argc, char *argv[])
 	if (listen(listenfd, 64) < 0)
 		Log("listen error");
 	if ((efd = epoll_create1(0)) < 0)
-		Log("epoll_create1");
+		Log("epoll_create1 error");
 	event.data.fd = listenfd;
 	event.events = EPOLLIN | EPOLLET;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, listenfd, &event) < 0)
@@ -119,7 +136,7 @@ int main(int argc, char *argv[])
 			if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
 				/* An error has occured on this fd, or the socket is not
 				 * ready for reading (why were we notified then?) */
-				printf("epoll error\n");
+				printf("epoll error, unknow event\n");
 				close(events[i].data.fd);
 				continue;
 			} else if (listenfd == events[i].data.fd) {
@@ -137,12 +154,12 @@ int main(int argc, char *argv[])
 							 * connections. */
 							break;
 						} else
-							Log("accept new client erro");
+							Log("accept new client error");
 					}
 					if (debug) {
 						char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 						if (getnameinfo(&in_addr, in_len, hbuf, sizeof hbuf, sbuf, sizeof sbuf, NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
-							printf("Accepted connection on descriptor %d " "(host=%s, port=%s)\n", infd, hbuf, sbuf);
+							printf("new connection on fd %d " "(host=%s, port=%s)\n", infd, hbuf, sbuf);
 						}
 					}
 
@@ -152,15 +169,11 @@ int main(int argc, char *argv[])
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
 					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0)
-						Log("epoll_ctl add new client");
+						Log("epoll_ctl add new client error");
 				}
 				continue;
 			} else if (events[i].events & EPOLLIN) {
-				/* We have data on the fd waiting to be read. Read and
-				 * display it. We must read whatever data is available
-				 * completely, as we are running in edge-triggered mode
-				 * and won't get a notification again for the same
-				 * data. 
+				/* We have data on the fd waiting to be read.
 				 *
 				 * We only read the first packet, for normal http client, it's OK */
 
