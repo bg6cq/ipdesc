@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -24,12 +25,7 @@
 int port = 80;
 int fork_and_do = 0;
 int debug = 0;
-
-void Log(char *msg)
-{
-	printf("%s\n", msg);
-	exit(1);
-}
+int ipv6 = 0;
 
 void respond(int cfd, char *mesg)
 {
@@ -57,36 +53,83 @@ void respond(int cfd, char *mesg)
 	write(cfd, buf, len);
 }
 
-void set_socket_non_blocking(int fd)
+int set_socket_non_blocking(int fd)
 {
 	int flags;
 	flags = fcntl(fd, F_GETFL, 0);
 	if (flags < 0)
-		Log("fcntl getfl error");
+		return -1;
 	flags |= O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) < 0)
-		Log("fcntl setfl error");
+		return -1;
+	return 0;
 }
 
 void usage(void)
 {
 	printf("Usage:\n");
-	printf("   ipdescd [ -d ] [ -f ] [ tcp_port ]\n");
+	printf("   ipdescd [ -d ] [ -f ] [ -6 ] [ tcp_port ]\n");
 	printf("        -d debug\n");
 	printf("        -f fork and do\n");
+	printf("        -6 support ipv6\n");
 	printf("        default port is 80\n");
 	exit(0);
+}
+
+int bind_and_listen(void)
+{
+	int listenfd;
+	int enable = 1;
+
+	if (ipv6)
+		listenfd = socket(AF_INET6, SOCK_STREAM, 0);
+	else
+		listenfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (listenfd < 0) {
+		perror("socket");
+		exit(-1);
+	}
+	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+		perror("setsockopt(SO_REUSEADDR)");
+		exit(-1);
+	}
+	if (ipv6) {
+		static struct sockaddr_in6 serv_addr6;
+		memset(&serv_addr6, 0, sizeof(serv_addr6));
+		serv_addr6.sin6_family = AF_INET6;
+		serv_addr6.sin6_port = htons(port);
+		if (bind(listenfd, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6)) < 0) {
+			perror("bind");
+			exit(-1);
+		}
+	} else {
+		static struct sockaddr_in serv_addr;
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		serv_addr.sin_port = htons(port);
+		if (bind(listenfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+			perror("bind");
+			exit(-1);
+		}
+	}
+	if (set_socket_non_blocking(listenfd) < 0) {
+		perror("set_socket_non_blocking");
+		exit(-1);
+	}
+	if (listen(listenfd, 64) < 0) {
+		perror("listen");
+		exit(-1);
+	}
+	return listenfd;
 }
 
 int main(int argc, char *argv[])
 {
 	int listenfd, efd;
-	int enable = 1;
 	struct epoll_event event, *events;
-	static struct sockaddr_in serv_addr;
 
 	int c;
-	while ((c = getopt(argc, argv, "dfh")) != EOF)
+	while ((c = getopt(argc, argv, "df6h")) != EOF)
 		switch (c) {
 		case 'd':
 			debug = 1;
@@ -94,13 +137,18 @@ int main(int argc, char *argv[])
 		case 'f':
 			fork_and_do = 1;
 			break;
+		case '6':
+			ipv6 = 1;
+			break;
 		case 'h':
 			usage();
 		};
 	if (optind == argc - 1)
 		port = atoi(argv[optind]);
-	if (port < 0 || port > 65535)
-		Log("Invalid port number try [1,65535]");
+	if (port < 0 || port > 65535) {
+		printf("Invalid port number %d, please try [1,65535]", port);
+		exit(-1);
+	}
 
 	(void)signal(SIGCLD, SIG_IGN);
 	(void)signal(SIGHUP, SIG_IGN);
@@ -115,7 +163,7 @@ int main(int argc, char *argv[])
 				break;
 			else {
 				if (debug)
-					printf("parent wait child\n");
+					printf("I am parent, waiting for child...\n");
 				wait(NULL);
 			}
 			if (debug)
@@ -127,26 +175,21 @@ int main(int argc, char *argv[])
 	}
 	printf("web server started at port: %d, my pid: %d\n", port, getpid());
 
-	if (init("17monipdb.dat") != 1)
-		Log("init 17monipdb.dat error");
-	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-		Log("socket error");
-	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-		Log("setsockopt(SO_REUSEADDR) error");
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serv_addr.sin_port = htons(port);
-	if (bind(listenfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-		Log("bind error");
-	set_socket_non_blocking(listenfd);
-	if (listen(listenfd, 64) < 0)
-		Log("listen error");
-	if ((efd = epoll_create1(0)) < 0)
-		Log("epoll_create1 error");
+	if (init("17monipdb.dat") != 1) {
+		printf("init 17monipdb.dat error");
+		exit(-1);
+	}
+	listenfd = bind_and_listen();
+	if ((efd = epoll_create1(0)) < 0) {
+		perror("epoll_create1");
+		exit(-1);
+	}
 	event.data.fd = listenfd;
 	event.events = EPOLLIN | EPOLLET;
-	if (epoll_ctl(efd, EPOLL_CTL_ADD, listenfd, &event) < 0)
-		Log("epoll ctl_add of listenfd");
+	if (epoll_ctl(efd, EPOLL_CTL_ADD, listenfd, &event) < 0) {
+		perror("epoll_ctl_add of listenfd");
+		exit(-1);
+	}
 	/* Buffer where events are returned */
 	events = calloc(MAXEVENTS, sizeof event);
 
@@ -158,42 +201,60 @@ int main(int argc, char *argv[])
 			if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
 				/* An error has occured on this fd, or the socket is not
 				 * ready for reading (why were we notified then?) */
-				printf("epoll error, unknow event\n");
+				printf("epollerr or epollhup event of fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
-			} else if (listenfd == events[i].data.fd) {
+				continue;
+			}
+			if (!(events[i].events & EPOLLIN)) {
+				printf("unknow event of fd %d\n", events[i].data.fd);
+				close(events[i].data.fd);
+				continue;
+			}
+			if (listenfd == events[i].data.fd) {
 				/* notification on the listening socket, which
 				 * means one or more incoming connections. */
 				while (1) {
-					struct sockaddr in_addr;
-					socklen_t in_len;
 					int infd;
-					in_len = sizeof in_addr;
-					infd = accept(listenfd, &in_addr, &in_len);
+					infd = accept(listenfd, NULL, 0);
 					if (infd == -1) {
 						if ((errno == EAGAIN) || (errno == EWOULDBLOCK))	/*  all incoming connections processed. */
 							break;
 						else {
-							printf("accept new client error");
+							perror("accept new client");
 							break;
 						}
 					}
 					if (debug) {
-						char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-						if (getnameinfo(&in_addr, in_len, hbuf, sizeof hbuf, sbuf, sizeof sbuf, NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
-							printf("new connection on fd %d " "(host=%s, port=%s)\n", infd, hbuf, sbuf);
+						struct sockaddr_storage in_addr;
+						socklen_t in_len = sizeof(in_addr);
+						char hbuf[INET6_ADDRSTRLEN];
+
+						getpeername(infd, (struct sockaddr *)&in_addr, &in_len);
+						if (in_addr.ss_family == AF_INET6) {
+							struct sockaddr_in6 *r = (struct sockaddr_in6 *)&in_addr;
+							inet_ntop(AF_INET6, &r->sin6_addr, hbuf, sizeof(hbuf));
+							printf("new connection on fd %d " "(host=%s, port=%d)\n", infd, hbuf, ntohs(r->sin6_port));
+						} else if (in_addr.ss_family == AF_INET) {
+							struct sockaddr_in *r = (struct sockaddr_in *)&in_addr;
+							inet_ntop(AF_INET, &r->sin_addr, hbuf, sizeof(hbuf));
+							printf("new connection on fd %d " "(host=%s, port=%d)\n", infd, hbuf, ntohs(r->sin_port));
 						}
 					}
 
 					/* set the incoming socket non-blocking and add it to the list of fds to monitor. */
-					set_socket_non_blocking(infd);
+					if (set_socket_non_blocking(infd) < 0) {
+						perror("set_socket_non_blocking of new client");
+						close(infd);
+						continue;
+					}
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
 					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0) {
-						if (debug)
-							printf("epoll_ctl add new client error");
+						perror("epoll_ctl_add new client");
 						close(infd);
 					}
 				}
+				continue;
 			} else if (events[i].events & EPOLLIN) {
 				/* new data on the fd waiting to be read.
 				 *
