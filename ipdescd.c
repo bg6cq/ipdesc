@@ -1,9 +1,8 @@
 // 17monipdb.dat from ipip.net
 
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -15,7 +14,9 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
+
 #include "ipip.h"
 
 #define MAXEVENTS 64
@@ -40,12 +41,12 @@ void respond(int cfd, char *mesg)
 	else if (*p == 'G' && *(p + 1) == 'E' && *(p + 2) == 'T' && *(p + 3) == ' ' && *(p + 4) == '/' && *(p + 5) >= '0' && *(p + 5) <= '9') {
 		char result[128];
 		find(p + 5, result, 128);
-		len =
-		    snprintf(buf, MAXLEN,
-			     "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n%s\r\n",
-			     result);
+		len = snprintf(buf, MAXLEN,
+			       "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n%s\r\n",
+			       result);
 	} else
-		len = snprintf(buf, MAXLEN, "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
+		len = snprintf(buf, MAXLEN,
+			       "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
 			       "使用方式: /IP地址<br>IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
 			       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
 	if (debug)
@@ -63,6 +64,18 @@ int set_socket_non_blocking(int fd)
 	if (fcntl(fd, F_SETFL, flags) < 0)
 		return -1;
 	return 0;
+}
+
+void set_socket_keepalive(int fd)
+{
+	int keepalive = 1;	// 开启keepalive属性
+	int keepidle = 5;	// 如该连接在60秒内没有任何数据往来,则进行探测
+	int keepinterval = 5;	// 探测时发包的时间间隔为5 秒
+	int keepcount = 3;	// 探测尝试的次数。如果第1次探测包就收到响应了,则后2次的不再发
+	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive, sizeof(keepalive));
+	setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, (void *)&keepidle, sizeof(keepidle));
+	setsockopt(fd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepinterval, sizeof(keepinterval));
+	setsockopt(fd, SOL_TCP, TCP_KEEPCNT, (void *)&keepcount, sizeof(keepcount));
 }
 
 void usage(void)
@@ -221,7 +234,7 @@ int main(int argc, char *argv[])
 							break;
 						else {
 							perror("accept new client");
-							break;
+							continue;
 						}
 					}
 					if (debug) {
@@ -247,6 +260,7 @@ int main(int argc, char *argv[])
 						close(infd);
 						continue;
 					}
+					set_socket_keepalive(infd);
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
 					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0) {
