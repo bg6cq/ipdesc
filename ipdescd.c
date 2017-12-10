@@ -107,7 +107,8 @@ int main(int argc, char *argv[])
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	if (fork_and_do) {
-		if(debug) printf("I am parent, pid: %d\n", getpid());
+		if (debug)
+			printf("I am parent, pid: %d\n", getpid());
 		while (1) {
 			int pid = fork();
 			if (pid == 0)	// child do the job
@@ -171,8 +172,10 @@ int main(int argc, char *argv[])
 					if (infd == -1) {
 						if ((errno == EAGAIN) || (errno == EWOULDBLOCK))	/*  all incoming connections processed. */
 							break;
-						else
-							Log("accept new client error");
+						else {
+							printf("accept new client error");
+							break;
+						}
 					}
 					if (debug) {
 						char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
@@ -185,8 +188,11 @@ int main(int argc, char *argv[])
 					set_socket_non_blocking(infd);
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
-					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0)
-						Log("epoll_ctl add new client error");
+					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0) {
+						if (debug)
+							printf("epoll_ctl add new client error");
+						close(infd);
+					}
 				}
 			} else if (events[i].events & EPOLLIN) {
 				/* new data on the fd waiting to be read.
