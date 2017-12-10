@@ -15,6 +15,15 @@ ipdesc 程序基于GPL v3发布。
 * 帮助信息 [http://210.45.224.10:90/](http://210.45.224.10:90/)
 * 查询演示 [http://210.45.224.10:90/202.38.64.1](http://210.45.224.10:90/202.38.64.1)
 
+命令行：
+```
+Usage:
+   ipdescd [ -d ] [ -f ] [ -6 ] [ tcp_port ]
+        -d debug
+        -f fork and do
+        -6 support ipv6
+        default port is 80
+```
 程序有两种方式提供服务：
 
 ## docker 服务运行
