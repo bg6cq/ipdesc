@@ -28,27 +28,47 @@ int fork_and_do = 0;
 int debug = 0;
 int ipv6 = 0;
 
+char *http_head =
+    "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n";
+
 void respond(int cfd, char *mesg)
 {
-	char *p, buf[MAXLEN];
-	int len;
+	char buf[MAXLEN], *p = mesg;
+	char result[128];
+	int len = 0;
 
 	if (debug)
 		printf("From Client(fd %d):\n%s##END\n", cfd, mesg);
-	p = mesg;
-	if (memcmp(p, "GET /favicon.ico", 16) == 0)
-		len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
-	else if (*p == 'G' && *(p + 1) == 'E' && *(p + 2) == 'T' && *(p + 3) == ' ' && *(p + 4) == '/' && *(p + 5) >= '0' && *(p + 5) <= '9') {
-		char result[128];
-		find(p + 5, result, 128);
-		len = snprintf(buf, MAXLEN,
-			       "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n%s\r\n",
-			       result);
-	} else
-		len = snprintf(buf, MAXLEN,
-			       "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-			       "使用方式: /IP地址<br>IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
-			       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
+	buf[0] = 0;
+	if (memcmp(p, "GET /", 5) == 0) {
+		if (memcmp(p + 5, "favicon.ico", 11) == 0)
+			len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
+		else if (*(p + 5) == ' ') {	//   GET /, show ip and desc
+			struct sockaddr_storage in_addr;
+			socklen_t in_len = sizeof(in_addr);
+			char hbuf[INET6_ADDRSTRLEN];
+
+			getpeername(cfd, (struct sockaddr *)&in_addr, &in_len);
+			if (in_addr.ss_family == AF_INET6) {
+				struct sockaddr_in6 *r = (struct sockaddr_in6 *)&in_addr;
+				inet_ntop(AF_INET6, &r->sin6_addr, hbuf, sizeof(hbuf));
+				len = snprintf(buf, MAXLEN, "%s%s IPv6\r\n", http_head, hbuf);
+			} else if (in_addr.ss_family == AF_INET) {
+				struct sockaddr_in *r = (struct sockaddr_in *)&in_addr;
+				inet_ntop(AF_INET, &r->sin_addr, hbuf, sizeof(hbuf));
+				find(hbuf, result, 128);
+				len = snprintf(buf, MAXLEN, "%s%s %s\r\n", http_head, hbuf, result);
+			}
+		} else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
+			find(p + 5, result, 128);
+			len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
+		} else
+			len = snprintf(buf, MAXLEN,
+				       "%s%s\r\n", http_head,
+				       "使用方式: <br>http://serverip/ 显示本机IP地址和信息<br>http://serverip/IP地址 显示IP地址的信息<p>"
+				       "IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
+				       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
+	}
 	if (debug)
 		printf("Send to Client(fd %d):\n%s##END\n", cfd, buf);
 	write(cfd, buf, len);
