@@ -205,11 +205,10 @@ int main(int argc, char *argv[])
 	}
 	/* Buffer where events are returned */
 	events = calloc(MAXEVENTS, sizeof event);
-	if(events == NULL) {
+	if (events == NULL) {
 		perror("calloc memory");
 		exit(-1);
 	}
-
 	// Event Loop 
 	while (1) {
 		int n, i;
