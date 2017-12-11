@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
 			sleep(2);
 		}
 		if (debug)
-			printf("child do the job\n");
+			printf("I am child, I am doing the job\n");
 	}
 	printf("web server started at port: %d, my pid: %d\n", port, getpid());
 

@@ -2,6 +2,7 @@ ipdescd: ipdescd.c ipip.c ipip.h
 	gcc -o ipdescd -Wall ipdescd.c ipip.c
 
 docker:  ipdescd 17monipdb.dat
+	gcc -static -o ipdescd -Wall ipdescd.c ipip.c
 	docker build -t ipdesc .
 
 indent: ipdescd.c ipip.c ipip.h
