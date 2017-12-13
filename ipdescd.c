@@ -61,7 +61,10 @@ void respond(int cfd, char *mesg)
 			}
 		} else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
 			find(p + 5, result, 128);
-			len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
+			if(result[0])
+				len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
+			else
+				len = snprintf(buf, MAXLEN, "%sNULL\r\n", http_head);
 		} else
 			len = snprintf(buf, MAXLEN,
 				       "%s%s\r\n", http_head,
