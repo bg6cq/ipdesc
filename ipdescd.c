@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
 							continue;
 						} else {
 							perror("error: accept new client");
-							break;
+							exit(-1);
 						}
 					}
 					if (debug) {
