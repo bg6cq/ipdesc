@@ -37,7 +37,7 @@ void respond(int cfd, char *mesg)
 	char result[128];
 	int len = 0;
 
-	if (debug)
+	if (debug >= 2)
 		printf("From Client(fd %d):\n%s##END\n", cfd, mesg);
 	buf[0] = 0;
 	if (memcmp(p, "GET /", 5) == 0) {
@@ -72,7 +72,7 @@ void respond(int cfd, char *mesg)
 				       "IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20170704<br>"
 				       "感谢北京天特信科技有限公司<br>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
 	}
-	if (debug)
+	if (debug >= 2)
 		printf("Send to Client(fd %d):\n%s##END\n", cfd, buf);
 	write(cfd, buf, len);
 }
@@ -104,8 +104,8 @@ void set_socket_keepalive(int fd)
 void usage(void)
 {
 	printf("Usage:\n");
-	printf("   ipdescd [ -d ] [ -f ] [ -6 ] [ tcp_port ]\n");
-	printf("        -d debug\n");
+	printf("   ipdescd [ -d debug_level ] [ -f ] [ -6 ] [ tcp_port ]\n");
+	printf("        -d debug, level 1: print socket op, 2: print msg\n");
 	printf("        -f fork and do\n");
 	printf("        -6 support ipv6\n");
 	printf("        default port is 80\n");
@@ -122,11 +122,11 @@ int bind_and_listen(void)
 	else
 		listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (listenfd < 0) {
-		perror("socket");
+		perror("error: socket");
 		exit(-1);
 	}
 	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
-		perror("setsockopt(SO_REUSEADDR)");
+		perror("error: setsockopt(SO_REUSEADDR)");
 		exit(-1);
 	}
 	if (ipv6) {
@@ -135,7 +135,7 @@ int bind_and_listen(void)
 		serv_addr6.sin6_family = AF_INET6;
 		serv_addr6.sin6_port = htons(port);
 		if (bind(listenfd, (struct sockaddr *)&serv_addr6, sizeof(serv_addr6)) < 0) {
-			perror("bind");
+			perror("error: bind");
 			exit(-1);
 		}
 	} else {
@@ -144,16 +144,16 @@ int bind_and_listen(void)
 		serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 		serv_addr.sin_port = htons(port);
 		if (bind(listenfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-			perror("bind");
+			perror("error: bind");
 			exit(-1);
 		}
 	}
 	if (set_socket_non_blocking(listenfd) < 0) {
-		perror("set_socket_non_blocking");
+		perror("error: set_socket_non_blocking");
 		exit(-1);
 	}
 	if (listen(listenfd, 64) < 0) {
-		perror("listen");
+		perror("error: listen");
 		exit(-1);
 	}
 	return listenfd;
@@ -162,13 +162,14 @@ int bind_and_listen(void)
 int main(int argc, char *argv[])
 {
 	int listenfd, efd;
+	int idle_fd = open("/dev/null", O_RDONLY);	// fd for accept no file err
 	struct epoll_event event, *events;
 
 	int c;
-	while ((c = getopt(argc, argv, "df6h")) != EOF)
+	while ((c = getopt(argc, argv, "d:f6h")) != EOF)
 		switch (c) {
 		case 'd':
-			debug = 1;
+			debug = atoi(optarg);;
 			break;
 		case 'f':
 			fork_and_do = 1;
@@ -217,19 +218,19 @@ int main(int argc, char *argv[])
 	}
 	listenfd = bind_and_listen();
 	if ((efd = epoll_create1(0)) < 0) {
-		perror("epoll_create1");
+		perror("error: epoll_create1");
 		exit(-1);
 	}
 	event.data.fd = listenfd;
 	event.events = EPOLLIN | EPOLLET;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, listenfd, &event) < 0) {
-		perror("epoll_ctl_add of listenfd");
+		perror("error: epoll_ctl_add of listenfd");
 		exit(-1);
 	}
 	/* Buffer where events are returned */
 	events = calloc(MAXEVENTS, sizeof event);
 	if (events == NULL) {
-		perror("calloc memory");
+		perror("error: calloc memory");
 		exit(-1);
 	}
 	// Event Loop 
@@ -245,7 +246,7 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			if (!(events[i].events & EPOLLIN)) {
-				printf("unknow event of fd %d\n", events[i].data.fd);
+				printf("error: unknow event of fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
 				continue;
 			}
@@ -258,9 +259,25 @@ int main(int argc, char *argv[])
 					if (infd == -1) {
 						if ((errno == EAGAIN) || (errno == EWOULDBLOCK))	/*  all incoming connections processed. */
 							break;
-						else {
-							perror("accept new client");
+						else if ((errno == EMFILE) || (errno == ENFILE)) {
+							perror("error: first accept");
+							close(idle_fd);
+							infd = accept(listenfd, NULL, 0);
+							if (infd == -1) {
+								if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {	/*  all incoming connections processed. */
+									idle_fd = open("/dev/null", O_RDONLY);
+									break;
+								} else {
+									perror("error: sencond accept");
+									exit(-1);
+								}
+							}
+							close(infd);
+							idle_fd = open("/dev/null", O_RDONLY);
 							continue;
+						} else {
+							perror("error: accept new client");
+							break;
 						}
 					}
 					if (debug) {
@@ -282,7 +299,7 @@ int main(int argc, char *argv[])
 
 					/* set the incoming socket non-blocking and add it to the list of fds to monitor. */
 					if (set_socket_non_blocking(infd) < 0) {
-						perror("set_socket_non_blocking of new client");
+						perror("error: set_socket_non_blocking of new client");
 						close(infd);
 						continue;
 					}
@@ -290,7 +307,7 @@ int main(int argc, char *argv[])
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
 					if (epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) < 0) {
-						perror("epoll_ctl_add new client");
+						perror("error: epoll_ctl_add new client");
 						close(infd);
 					}
 				}
@@ -308,7 +325,7 @@ int main(int argc, char *argv[])
 					respond(events[i].data.fd, buf);
 				}
 				if (debug)
-					printf("close fd %d\n\n", events[i].data.fd);
+					printf("close fd %d\n", events[i].data.fd);
 				close(events[i].data.fd);
 			}
 		}
