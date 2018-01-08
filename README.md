@@ -51,7 +51,7 @@ git clone https://github.com/bg6cq/ipdesc
 cd ipdesc
 make
 自行下载 http://ipip.net 的免费版 17monipdb.dat
-./ipdesc -f 90
+./ipdescd -f 90
 ```
 
 如果需要查看运行的调试输出，可以使用
