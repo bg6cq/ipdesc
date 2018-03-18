@@ -50,7 +50,9 @@ cd /usr/src
 git clone https://github.com/bg6cq/ipdesc
 cd ipdesc
 make
-自行下载 http://ipip.net 的免费版 17monipdb.dat
+
+自行下载 http://ipip.net 的免费版 17monipdb.datx 到当前目录
+
 ./ipdescd -f 90
 ```
 

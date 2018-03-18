@@ -65,12 +65,17 @@ void respond(int cfd, char *mesg)
 				len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
 			else
 				len = snprintf(buf, MAXLEN, "%sNULL\r\n", http_head);
-		} else
+		} else {
+			find("255.255.255.255.", result, 128);
 			len = snprintf(buf, MAXLEN,
-				       "%s%s\r\n", http_head,
-				       "使用方式: <br>http://serverip/ 显示本机IP地址和信息<br>http://serverip/IP地址 显示IP地址的信息<p>"
-				       "IP地址数据库来自<a href=http://ipip.net>http://ipip.net</a>免费版，最后更新时间20180101<br>"
-				       "感谢北京天特信科技有限公司<p>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2017.12.09");
+				       "%s%s%s%s\r\n", http_head,
+				       "使用方式: <p><table><tr><td><font color=blue>http://serverip/</font></td><td>显示本机IP地址和信息</td></tr>"
+				       "<tr><td><font color=blue>http://serverip/IP地址</font></td><td>显示IP地址的信息</td></tr></table><p>"
+				       "IP地址数据库来自 <a href=http://ipip.net>http://ipip.net</a> 免费版<p>"
+				       "数据库版本: <font color=red>",
+				       result,
+				       "</font><p>感谢北京天特信科技有限公司<p>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2018.03.18");
+		}
 	}
 	if (debug >= 2)
 		printf("Send to Client(fd %d):\n%s##END\n", cfd, buf);
@@ -212,8 +217,8 @@ int main(int argc, char *argv[])
 	}
 	printf("web server started at port: %d, my pid: %d\n", port, getpid());
 
-	if (init("17monipdb.dat") != 1) {
-		printf("init 17monipdb.dat error");
+	if (init("17monipdb.datx") != 1) {
+		printf("init 17monipdb.datx error");
 		exit(-1);
 	}
 	listenfd = bind_and_listen();
