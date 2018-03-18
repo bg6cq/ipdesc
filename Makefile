@@ -8,6 +8,7 @@ ipiptest: ipiptest.c ipip.c ipip.h
 	./ipiptest
 
 docker:  ipdescd 17monipdb.datx
+	gcc -static -o ipdescd -Wall ipdescd.c ipip.c
 	docker build -t ipdesc .
 
 indent: ipdescd.c ipip.c ipip.h ipiptest.c
