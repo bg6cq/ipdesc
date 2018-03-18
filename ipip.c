@@ -88,7 +88,13 @@ int find(const char *ip, char *result, int len)
 {
 	uint ips[4];
 	int num = sscanf(ip, "%d.%d.%d.%d", &ips[0], &ips[1], &ips[2], &ips[3]);
-	if (num != 4) {
+	int ipvalid = 1;
+	int i;
+	for (i = 0; i < 4; i++)
+		if ((ips[i] < 0) || (ips[i] > 255))
+			ipvalid = 0;
+
+	if ((num != 4) || (ipvalid == 0)) {
 		snprintf(result, len, "IP format error");
 		return 0;
 	}
