@@ -52,7 +52,11 @@ void respond(int cfd, char *mesg)
 			if (in_addr.ss_family == AF_INET6) {
 				struct sockaddr_in6 *r = (struct sockaddr_in6 *)&in_addr;
 				inet_ntop(AF_INET6, &r->sin6_addr, hbuf, sizeof(hbuf));
-				len = snprintf(buf, MAXLEN, "%s%s IPv6\r\n", http_head, hbuf);
+				if(memcmp(hbuf,"::ffff:",7)==0) {
+					find(hbuf + 7, result, 128);
+					len = snprintf(buf, MAXLEN, "%s%s %s\r\n", http_head, hbuf + 7, result);
+				} else 
+					len = snprintf(buf, MAXLEN, "%s%s IPv6\r\n", http_head, hbuf);
 			} else if (in_addr.ss_family == AF_INET) {
 				struct sockaddr_in *r = (struct sockaddr_in *)&in_addr;
 				inet_ntop(AF_INET, &r->sin_addr, hbuf, sizeof(hbuf));
