@@ -2,7 +2,10 @@
 
 ipdesc 程序基于GPL v3发布。
 
-本查询服务使用 http://ipip.net 提供的IP地址数据库免费版, 感谢北京天特信科技有限公司([http://ipip.net](http://ipip.net))。
+本查询服务IPv4信息使用 http://ipip.net 提供的IP地址数据库免费版, 感谢北京天特信科技有限公司([http://ipip.net](http://ipip.net))。
+
+IPv6信息使用 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a> 
+
 
 特点：
 
@@ -11,17 +14,17 @@ ipdesc 程序基于GPL v3发布。
 
 演示站点（请单击如下URL测试）：
 
-* 帮助信息 [http://210.45.224.10:90/help](http://210.45.224.10:90/help)
-* 本机IP信息 [http://210.45.224.10:90/](http://210.45.224.10:90/) IPv6: [http://[2001:da8:d800:300::10]:90/](http://[2001:da8:d800:300::10]:90/)
-* 查询IP信息 [http://210.45.224.10:90/202.38.64.1](http://210.45.224.10:90/202.38.64.1) IPv6: [http://[2001:da8:d800:300::10]:90/202.38.64.1](http://[2001:da8:d800:300::10]:90/202.38.64.1)
+* 帮助信息 [http://202.38.95.17:90/help](http://202.38.95.17:90/help)
+* 查询IP信息 [http://202.38.95.17:90/202.38.64.1](http://202.38.95.17:90/202.38.64.1) IPv6: [http://[2001:da8:d800:95::17]:90/202.38.64.1](http://[2001:da8:d800:95::17]:90/202.38.64.1)
 
 命令行：
 ```
 Usage:
-   ipdescd [ -d ] [ -f ] [ -6 ] [ tcp_port ]
+   ipdescd [ -d ] [ -f ] [ -6 ] -m mmdbfilename [ tcp_port ]
         -d debug
         -f fork and do
         -6 support ipv6
+	-m mmdbfilename
         default port is 80
 ```
 程序有两种方式提供服务：

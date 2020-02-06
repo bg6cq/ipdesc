@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 
 #include "ipdb-c/ipdb.h"
+#include "maxminddb.h"
 
 #define MAXEVENTS 64
 
@@ -27,8 +28,10 @@ int port = 80;
 int fork_and_do = 0;
 int debug = 0;
 int ipv6 = 0;
+char mmdbfilename[MAXLEN];
 
-ipdb_reader *reader;
+ipdb_reader *reader;		// ipip.net ipdb
+MMDB_s mmdb;			// db-ip mmdb
 
 char *http_head =
     "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n";
@@ -49,8 +52,76 @@ void find(char *ip, char *result, int len)
 	if (debug >= 2)
 		printf("find: %s\n", ip);
 	int err = ipdb_reader_find(reader, ip, "CN", result);
-	if (err)
-		result[0] = 0;
+	if (err == 0)
+		return;
+
+	result[0] = 0;
+
+// ipip.net not found, using db-ip, for ipv6
+
+	int gai_error, mmdb_error;
+	MMDB_lookup_result_s mmdbresult = MMDB_lookup_string(&mmdb, ip, &gai_error, &mmdb_error);
+
+	if (gai_error != 0) {
+		if (debug >= 2)
+			printf("Error from getaddrinfo for %s - %s\n", ip, gai_strerror(gai_error));
+		return;
+	}
+
+	if (MMDB_SUCCESS != mmdb_error) {
+		if (debug >= 2)
+			printf("Got an error from libmaxminddb: %s\n\n", MMDB_strerror(mmdb_error));
+		return;
+	}
+
+	MMDB_entry_data_s entry_data;
+	char country[MAXLEN];
+	char subdivision[MAXLEN];
+	char city[MAXLEN];
+	strcpy(country, "未知");
+	strcpy(subdivision, "未知");
+	strcpy(city, "未知");
+//step 1, get country
+
+	int status = MMDB_get_value(&mmdbresult.entry, &entry_data,
+				    "country", "names", "zh-CN", NULL);
+	if (status != MMDB_SUCCESS)
+		status = MMDB_get_value(&mmdbresult.entry, &entry_data, "country", "names", "en", NULL);
+
+	if ((status == MMDB_SUCCESS) && entry_data.has_data) {
+		if (entry_data.type == MMDB_DATA_TYPE_UTF8_STRING) {
+			int n;
+			n = entry_data.data_size > MAXLEN - 1 ? MAXLEN - 1 : entry_data.data_size;
+			memcpy(country, entry_data.utf8_string, n);
+			country[n] = 0;
+		}
+	}
+// step 2. get subdivisions
+	status = MMDB_get_value(&mmdbresult.entry, &entry_data, "subdivisions", "names", "zh-CN", NULL);
+	if (status != MMDB_SUCCESS)
+		status = MMDB_get_value(&mmdbresult.entry, &entry_data, "subdivisions", "0", "names", "en", NULL);
+	if ((status == MMDB_SUCCESS) && entry_data.has_data) {
+		if (entry_data.type == MMDB_DATA_TYPE_UTF8_STRING) {
+			int n;
+			n = entry_data.data_size > MAXLEN - 1 ? MAXLEN - 1 : entry_data.data_size;
+			memcpy(subdivision, entry_data.utf8_string, n);
+			subdivision[n] = 0;
+		}
+	}
+// step3. city
+	status = MMDB_get_value(&mmdbresult.entry, &entry_data, "city", "names", "zh-CN", NULL);
+	if (status != MMDB_SUCCESS)
+		status = MMDB_get_value(&mmdbresult.entry, &entry_data, "city", "names", "en", NULL);
+	if ((status == MMDB_SUCCESS) && entry_data.has_data) {
+		if (entry_data.type == MMDB_DATA_TYPE_UTF8_STRING) {
+			int n;
+			n = entry_data.data_size > MAXLEN - 1 ? MAXLEN - 1 : entry_data.data_size;
+			memcpy(city, entry_data.utf8_string, n);
+			city[n] = 0;
+		}
+	}
+	sprintf(result, "%s\t\%s\t%s", country, subdivision, city);
+	return;
 }
 
 void respond(int cfd, char *mesg)
@@ -94,9 +165,10 @@ void respond(int cfd, char *mesg)
 				       "%s%s<p>%s%li%s\r\n", http_head, result,
 				       "使用方式: <p><table><tr><td><font color=blue>http://serverip/</font></td><td>显示本机IP地址和信息</td></tr>"
 				       "<tr><td><font color=blue>http://serverip/IP地址</font></td><td>显示IP地址的信息</td></tr></table><p>"
-				       "IP地址数据库来自 <a href=http://ipip.net>http://ipip.net</a> 免费版<p>"
+				       "IPv4地址数据库来自 <a href=http://ipip.net>http://ipip.net</a> 免费版<br>"
 				       "数据库版本: <font color=red>", reader->meta->build_time,
-				       "</font><p>感谢北京天特信科技有限公司<p>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2018.03.18");
+				       "</font><br>感谢北京天特信科技有限公司<p>"
+				       "IPv6地址数据库来自 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a><p>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2020.02.06");
 		}
 	}
 
@@ -132,10 +204,11 @@ void set_socket_keepalive(int fd)
 void usage(void)
 {
 	printf("Usage:\n");
-	printf("   ipdescd [ -d debug_level ] [ -f ] [ -6 ] [ tcp_port ]\n");
+	printf("   ipdescd [ -d debug_level ] [ -f ] [ -6 ] -m mmdbfile_name [ tcp_port ]\n");
 	printf("        -d debug, level 1: print socket op, 2: print msg\n");
 	printf("        -f fork and do\n");
 	printf("        -6 support ipv6\n");
+	printf("        -m mmdbfile_name\n");
 	printf("        default port is 80\n");
 	exit(0);
 }
@@ -194,10 +267,13 @@ int main(int argc, char *argv[])
 	struct epoll_event event, *events;
 
 	int c;
-	while ((c = getopt(argc, argv, "d:f6h")) != EOF)
+	while ((c = getopt(argc, argv, "d:m:f6h")) != EOF)
 		switch (c) {
 		case 'd':
 			debug = atoi(optarg);;
+			break;
+		case 'm':
+			strncpy(mmdbfilename, optarg, MAXLEN - 1);
 			break;
 		case 'f':
 			fork_and_do = 1;
@@ -207,6 +283,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'h':
 			usage();
+
 		};
 	if (optind == argc - 1)
 		port = atoi(argv[optind]);
@@ -243,6 +320,17 @@ int main(int argc, char *argv[])
 	int err = ipdb_reader_new("ipipfree.ipdb", &reader);
 	if (err) {
 		printf("ipdb_reader_new ipipfree.ipdb error %d\n", err);
+		exit(-1);
+	}
+
+	int status = MMDB_open(mmdbfilename, MMDB_MODE_MMAP, &mmdb);
+
+	if (status != MMDB_SUCCESS) {
+		printf("Can't open %s - %s\n", mmdbfilename, MMDB_strerror(status));
+
+		if (MMDB_IO_ERROR == status) {
+			printf("    IO error: %s\n", strerror(errno));
+		}
 		exit(-1);
 	}
 	listenfd = bind_and_listen();
