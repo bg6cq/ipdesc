@@ -1,4 +1,4 @@
-// 17monipdb.dat from ipip.net
+// ipipfree.ipdb from ipip.net
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +17,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
-#include "ipip.h"
+#include "ipdb-c/ipdb.h"
 
 #define MAXEVENTS 64
 
@@ -28,8 +28,30 @@ int fork_and_do = 0;
 int debug = 0;
 int ipv6 = 0;
 
+ipdb_reader *reader;
+
 char *http_head =
     "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\nServer: web server by james@ustc.edu.cn, data from ipip.net\r\n\r\n";
+
+void find(char *ip, char *result, int len)
+{
+	if (debug >= 2)
+		printf("find: %s\n", ip);
+	char *p;
+	p = ip;
+	while (*p && ((*p == '.') || (*p == ':')
+		      || (*p >= '0' && *p <= '9')
+		      || (*p >= 'a' && *p <= 'z')
+		      || (*p >= 'A' && *p <= 'Z')
+		      || (*p >= 'A' && *p <= 'Z')))
+		p++;
+	*p = 0;
+	if (debug >= 2)
+		printf("find: %s\n", ip);
+	int err = ipdb_reader_find(reader, ip, "CN", result);
+	if (err)
+		result[0] = 0;
+}
 
 void respond(int cfd, char *mesg)
 {
@@ -39,11 +61,18 @@ void respond(int cfd, char *mesg)
 
 	if (debug >= 2)
 		printf("From Client(fd %d):\n%s##END\n", cfd, mesg);
+
 	buf[0] = 0;
 	if (memcmp(p, "GET /", 5) == 0) {
 		if (memcmp(p + 5, "favicon.ico", 11) == 0)
 			len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
-		else if (*(p + 5) == ' ') {	//   GET /, show ip and desc
+		else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
+			find(p + 5, result, 128);
+			if (result[0])
+				len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
+			else
+				len = snprintf(buf, MAXLEN, "%sNULL\r\n", http_head);
+		} else {
 			struct sockaddr_storage in_addr;
 			socklen_t in_len = sizeof(in_addr);
 			char hbuf[INET6_ADDRSTRLEN];
@@ -52,35 +81,25 @@ void respond(int cfd, char *mesg)
 			if (in_addr.ss_family == AF_INET6) {
 				struct sockaddr_in6 *r = (struct sockaddr_in6 *)&in_addr;
 				inet_ntop(AF_INET6, &r->sin6_addr, hbuf, sizeof(hbuf));
-				if(memcmp(hbuf,"::ffff:",7)==0) {
+				if (memcmp(hbuf, "::ffff:", 7) == 0) {
 					find(hbuf + 7, result, 128);
-					len = snprintf(buf, MAXLEN, "%s%s %s\r\n", http_head, hbuf + 7, result);
-				} else 
-					len = snprintf(buf, MAXLEN, "%s%s IPv6\r\n", http_head, hbuf);
+				} else
+					find(hbuf, result, 128);
 			} else if (in_addr.ss_family == AF_INET) {
 				struct sockaddr_in *r = (struct sockaddr_in *)&in_addr;
 				inet_ntop(AF_INET, &r->sin_addr, hbuf, sizeof(hbuf));
 				find(hbuf, result, 128);
-				len = snprintf(buf, MAXLEN, "%s%s %s\r\n", http_head, hbuf, result);
 			}
-		} else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
-			find(p + 5, result, 128);
-			if (result[0])
-				len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
-			else
-				len = snprintf(buf, MAXLEN, "%sNULL\r\n", http_head);
-		} else {
-			find("255.255.255.255.", result, 128);
 			len = snprintf(buf, MAXLEN,
-				       "%s%s%s%s\r\n", http_head,
+				       "%s%s<p>%s%li%s\r\n", http_head, result,
 				       "使用方式: <p><table><tr><td><font color=blue>http://serverip/</font></td><td>显示本机IP地址和信息</td></tr>"
 				       "<tr><td><font color=blue>http://serverip/IP地址</font></td><td>显示IP地址的信息</td></tr></table><p>"
 				       "IP地址数据库来自 <a href=http://ipip.net>http://ipip.net</a> 免费版<p>"
-				       "数据库版本: <font color=red>",
-				       result,
+				       "数据库版本: <font color=red>", reader->meta->build_time,
 				       "</font><p>感谢北京天特信科技有限公司<p>https://github.com/bg6cq/ipdesc<br>james@ustc.edu.cn 2018.03.18");
 		}
 	}
+
 	if (debug >= 2)
 		printf("Send to Client(fd %d):\n%s##END\n", cfd, buf);
 	write(cfd, buf, len);
@@ -221,8 +240,9 @@ int main(int argc, char *argv[])
 	}
 	printf("web server started at port: %d, my pid: %d\n", port, getpid());
 
-	if (init("17monipdb.datx") != 1) {
-		printf("init 17monipdb.datx error");
+	int err = ipdb_reader_new("ipipfree.ipdb", &reader);
+	if (err) {
+		printf("ipdb_reader_new ipipfree.ipdb error %d\n", err);
 		exit(-1);
 	}
 	listenfd = bind_and_listen();
