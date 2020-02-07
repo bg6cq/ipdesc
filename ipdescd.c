@@ -443,6 +443,7 @@ int main(int argc, char *argv[])
 				}
 				if (debug)
 					printf("close fd %d\n", events[i].data.fd);
+				shutdown(events[i].data.fd, SHUT_RDWR);
 				close(events[i].data.fd);
 			}
 		}
