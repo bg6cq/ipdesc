@@ -140,9 +140,9 @@ void respond(int cfd, char *mesg)
 		else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
 			find(p + 5, result, 128);
 			if (result[0])
-				len = snprintf(buf, MAXLEN, "%s%s\r\n", http_head, result);
+				len = snprintf(buf, MAXLEN, "%s%s", http_head, result);
 			else
-				len = snprintf(buf, MAXLEN, "%sNULL\r\n", http_head);
+				len = snprintf(buf, MAXLEN, "%s未知	未知	未知", http_head);
 		} else {
 			struct sockaddr_storage in_addr;
 			socklen_t in_len = sizeof(in_addr);
