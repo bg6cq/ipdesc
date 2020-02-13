@@ -30,6 +30,8 @@ int debug = 0;
 int ipv6 = 0;
 char mmdbfilename[MAXLEN];
 
+#include "shmcount.c"
+
 ipdb_reader *reader;		// ipip.net ipdb
 MMDB_s mmdb;			// db-ip mmdb
 
@@ -38,9 +40,10 @@ char *http_head =
 
 void find(char *ip, char *result, int len)
 {
+	char *p;
+	inc_lookup_count();
 	if (debug >= 2)
 		printf("find: %s\n", ip);
-	char *p;
 	p = ip;
 	while (*p && ((*p == '.') || (*p == ':')
 		      || (*p >= '0' && *p <= '9')
@@ -137,6 +140,8 @@ void respond(int cfd, char *mesg)
 	if (memcmp(p, "GET /", 5) == 0) {
 		if (memcmp(p + 5, "favicon.ico", 11) == 0)
 			len = snprintf(buf, MAXLEN, "HTTP/1.0 404 OK\r\nConnection: close\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n");
+		else if (memcmp(p + 5, "showlookupcount", 15) == 0)
+			len = snprintf(buf, MAXLEN, "%s%lu", http_head, get_lookup_count());
 		else if (*(p + 5) >= '0' && *(p + 5) <= '9') {	// GET /IP, show ip desc
 			find(p + 5, result, 128);
 			if (result[0])
@@ -295,6 +300,8 @@ int main(int argc, char *argv[])
 	(void)signal(SIGCLD, SIG_IGN);
 	(void)signal(SIGHUP, SIG_IGN);
 	setvbuf(stdout, NULL, _IONBF, 0);
+
+	initshm(1);
 
 	if (fork_and_do) {
 		if (debug)
