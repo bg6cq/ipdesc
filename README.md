@@ -4,7 +4,7 @@ ipdesc 程序基于GPL v3发布。
 
 本查询服务IPv4信息使用 http://ipip.net 提供的IP地址数据库免费版, 感谢北京天特信科技有限公司([http://ipip.net](http://ipip.net))。
 
-IPv6信息使用 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a> 
+IPv6信息使用 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a> https://db-ip.com/db/download/ip-to-city-lite
 
 
 特点：
@@ -54,15 +54,16 @@ git clone https://github.com/bg6cq/ipdesc
 cd ipdesc
 make
 
-自行下载 http://ipip.net 的免费版 17monipdb.datx 到当前目录
+自行下载 https://www.ipip.net/product/client.html 的免费版 ipipfree.ipdb 以及 https://db-ip.com/db/download/ip-to-city-lite 到当前目录
 
-./ipdescd -f 90
+./ipdescd -f 90 -m dbip-city-lite-2020-02.mmdb
 ```
 
 如果需要查看运行的调试输出，可以使用
 
 ```
-./ipdescd -f -d 90
+./ipdescd -f -d 90 -m dbip-city-lite-2020-02.mmdb
+
 ```
 
 上面的90是提供服务的tcp端口，访问 http://server_ip:90/x.x.x.x 即可返回x.x.x.x的地址信息
