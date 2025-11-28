@@ -1,7 +1,10 @@
-all: ipdescd ipiptest
+all: ipdescd ipiptest ipdesc
 
 ipdescd: ipdescd.c shmcount.c
 	gcc -o ipdescd -std=gnu99 -Wall ipdescd.c ipdb-c/ipdb.c -ljson-c -lmaxminddb
+
+ipdesc: ipdesc.c shmcount.c
+	gcc -o ipdesc -std=gnu99 -Wall ipdesc.c ipdb-c/ipdb.c -ljson-c -lmaxminddb
 
 ipiptest: ipiptest.c
 	gcc -o ipiptest -std=gnu99 -g -Wall ipiptest.c ipdb-c/ipdb.c -ljson-c
