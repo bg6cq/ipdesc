@@ -123,7 +123,7 @@ void find(char *ip, char *result, int len)
 			city[n] = 0;
 		}
 	}
-	sprintf(result, "%s\t\%s\t%s", country, subdivision, city);
+	snprintf(result, len, "%s\t%s\t%s", country, subdivision, city);
 	return;
 }
 
