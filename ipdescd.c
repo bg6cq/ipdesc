@@ -7,6 +7,8 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -29,6 +31,7 @@ int fork_and_do = 0;
 int debug = 0;
 int ipv6 = 0;
 char mmdbfilename[MAXLEN];
+char *sandbox_user = "nobody";	// -u user: chroot+setuid, default nobody; "-u root" disables
 
 #include "shmcount.c"
 
@@ -61,6 +64,15 @@ void find(char *ip, char *result, int len)
 	result[0] = 0;
 
 // ipip.net not found, using db-ip, for ipv6
+// MMDB_lookup_string() passes the input to getaddrinfo(), which performs
+// DNS resolution on any non-IP string. In the single-threaded daemon this
+// would block the whole event loop on attacker-controlled hostnames, so
+// only strictly valid IPv4/IPv6 literals are allowed through (HIGH-1).
+
+	struct in_addr a4;
+	struct in6_addr a6;
+	if (!inet_pton(AF_INET, ip, &a4) && !inet_pton(AF_INET6, ip, &a6))
+		return;
 
 	int gai_error, mmdb_error;
 	MMDB_lookup_result_s mmdbresult = MMDB_lookup_string(&mmdb, ip, &gai_error, &mmdb_error);
@@ -209,10 +221,11 @@ void set_socket_keepalive(int fd)
 void usage(void)
 {
 	printf("Usage:\n");
-	printf("   ipdescd [ -d debug_level ] [ -f ] [ -6 ] -m mmdbfile_name [ tcp_port ]\n");
+	printf("   ipdescd [ -d debug_level ] [ -f ] [ -6 ] [ -u user ] -m mmdbfile_name [ tcp_port ]\n");
 	printf("        -d debug, level 1: print socket op, 2: print msg\n");
 	printf("        -f fork and do\n");
 	printf("        -6 support ipv6\n");
+	printf("        -u user: chroot+setuid to user after listen (default nobody; -u root disables)\n");
 	printf("        -m mmdbfile_name\n");
 	printf("        default port is 80\n");
 	exit(0);
@@ -265,6 +278,60 @@ int bind_and_listen(void)
 	return listenfd;
 }
 
+// All file resources the daemon needs are opened before this point: both
+// databases are loaded, the listening socket is bound, /dev/null idle fd
+// exists and the shared-memory counter is attached. The event loop below
+// only touches memory, sockets and shared memory, so the process can be
+// confined to an empty chroot and dropped to an unprivileged uid.
+//
+// Must be called AFTER bind()/listen() (binding a privileged port requires
+// root). Refuses to run as root if a non-root target was requested, so the
+// sandbox can never silently degrade to "still root".
+static void sandbox(void)
+{
+	if (strcmp(sandbox_user, "root") == 0)
+		return;		// explicit opt-out
+
+	if (getuid() != 0 && geteuid() != 0) {
+		fprintf(stderr, "sandbox: not running as root, cannot chroot/setuid "
+			"to '%s'; use -u root to disable\n", sandbox_user);
+		exit(-1);
+	}
+
+	struct passwd *pw = getpwnam(sandbox_user);
+	if (pw == NULL) {
+		fprintf(stderr, "sandbox: unknown user '%s'\n", sandbox_user);
+		exit(-1);
+	}
+
+	if (chroot(".") < 0) {
+		perror("sandbox: chroot");
+		exit(-1);
+	}
+	if (chdir("/") < 0)	// guard against relative-path escapes
+		perror("sandbox: chdir");
+
+	if (setgid(pw->pw_gid) < 0) {
+		perror("sandbox: setgid");
+		exit(-1);
+	}
+	if (setuid(pw->pw_uid) < 0) {
+		perror("sandbox: setuid");
+		exit(-1);
+	}
+	if (getuid() != pw->pw_uid || geteuid() != pw->pw_uid) {
+		fprintf(stderr, "sandbox: failed to drop privileges to '%s'\n", sandbox_user);
+		exit(-1);
+	}
+	if (getgid() != pw->pw_gid || getegid() != pw->pw_gid) {
+		fprintf(stderr, "sandbox: failed to drop group to '%s'\n", sandbox_user);
+		exit(-1);
+	}
+	if (debug)
+		printf("sandbox: chroot'd, now running as uid=%d gid=%d\n",
+		       pw->pw_uid, pw->pw_gid);
+}
+
 int main(int argc, char *argv[])
 {
 	int listenfd, efd;
@@ -272,7 +339,7 @@ int main(int argc, char *argv[])
 	struct epoll_event event, *events;
 
 	int c;
-	while ((c = getopt(argc, argv, "d:m:f6h")) != EOF)
+	while ((c = getopt(argc, argv, "d:m:f6u:h")) != EOF)
 		switch (c) {
 		case 'd':
 			debug = atoi(optarg);;
@@ -286,6 +353,9 @@ int main(int argc, char *argv[])
 		case '6':
 			ipv6 = 1;
 			break;
+		case 'u':
+			sandbox_user = optarg;
+			break;
 		case 'h':
 			usage();
 
@@ -297,7 +367,14 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	(void)signal(SIGCLD, SIG_IGN);
+	// With SIGCHLD ignored, Linux auto-reaps children and wait()/waitpid()
+	// immediately return ECHILD, so the -f supervisor below could never tell
+	// when its worker had died and would respawn every 2s regardless. Only
+	// ignore SIGCHLD in plain (non-supervisor) mode; in -f mode keep the
+	// default disposition so the parent blocks in waitpid() until the worker
+	// really exits, then restarts it.
+	if (!fork_and_do)
+		(void)signal(SIGCLD, SIG_IGN);
 	(void)signal(SIGHUP, SIG_IGN);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -310,13 +387,26 @@ int main(int argc, char *argv[])
 			int pid = fork();
 			if (pid == 0)	// child do the job
 				break;
-			else {
-				if (debug)
-					printf("I am parent, waiting for child...\n");
-				wait(NULL);
+			if (pid < 0) {
+				perror("error: fork");
+				sleep(2);
+				continue;
 			}
+			// Parent: wait for this specific worker to exit, then respawn.
+			// An explicit status code is checked so an exit() from a worker
+			// failing its own startup (e.g. bind failure) is not hidden; the
+			// worker's own error path exits non-zero. Blocks until the worker
+			// really dies, so at most one worker exists at any time.
 			if (debug)
-				printf("child exit? I will restart it.\n");
+				printf("I am parent, waiting for child %d...\n", pid);
+			int wstatus;
+			while (waitpid(pid, &wstatus, 0) < 0 && errno == EINTR)
+				;
+			if (debug)
+				printf("child %d exit? status=%d, I will restart it.\n",
+				       pid, WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
+			if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)
+				return 0;	// clean shutdown, do not respawn
 			sleep(2);
 		}
 		if (debug)
@@ -341,6 +431,10 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 	listenfd = bind_and_listen();
+	/* from here on we no longer need root: sandbox (chroot + setuid) now.
+	 * Note: in -f mode this runs in the child after the fork above, and the
+	 * parent supervisor stays outside the chroot so it can respawn. */
+	sandbox();
 	if ((efd = epoll_create1(0)) < 0) {
 		perror("error: epoll_create1");
 		exit(-1);

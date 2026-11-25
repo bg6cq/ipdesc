@@ -11,6 +11,7 @@ IPv6信息使用 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a> https:/
 
 * 仅仅一个进程，占用内存约9MB，启动后不再读写任何文件，每秒钟可以响应超1万次查询
 * 使用epoll高效接口，单进程支持超1万并发连接（需要使用ulimit -n 10240设置单进程可打开的文件数）
+* 启动完成后自动 chroot 并降权到 nobody（默认开启，可用 -u root 关闭），运行期无法访问文件系统，降低被攻陷后的提权风险
 
 演示站点（请单击如下URL测试）：
 
@@ -20,13 +21,16 @@ IPv6信息使用 <a href='https://db-ip.com'>IP Geolocation by DB-IP</a> https:/
 命令行：
 ```
 Usage:
-   ipdescd [ -d ] [ -f ] [ -6 ] -m mmdbfilename [ tcp_port ]
+   ipdescd [ -d debug_level ] [ -f ] [ -6 ] [ -u user ] -m mmdbfilename [ tcp_port ]
         -d debug
         -f fork and do
         -6 support ipv6
-	-m mmdbfilename
+        -u user: 绑定端口后 chroot 并 setuid 到该用户（默认 nobody；-u root 关闭沙箱）
+        -m mmdbfilename
         default port is 80
 ```
+注意：程序必须在包含 ipipfree.ipdb 与 mmdbfilename 的目录下启动（chroot 以此为根）；
+默认会在启动后把自身限制在空 chroot 中并无权访问任何文件，如需旧行为可加 -u root。
 程序有两种方式提供服务：
 
 ## docker 服务运行
@@ -56,8 +60,11 @@ make
 
 自行下载 https://www.ipip.net/product/client.html 的免费版 ipipfree.ipdb 以及 https://db-ip.com/db/download/ip-to-city-lite 到当前目录
 
-./ipdescd -f 90 -m dbip-city-lite-2020-02.mmdb
+./ipdescd -f -m dbip-city-lite-2020-02.mmdb 90
 ```
+
+默认需要以root启动以绑定80端口（或使用 -u root 且以非root运行在1024以上端口）。
+程序会在绑定端口后执行 chroot + setuid(nobody)，进入事件循环后不再有root权限、也不再能访问任何文件。
 
 如果需要查看运行的调试输出，可以使用
 
@@ -68,6 +75,15 @@ make
 
 上面的90是提供服务的tcp端口，访问 http://server_ip:90/x.x.x.x 即可返回x.x.x.x的地址信息
 
+## 沙箱说明
+
+程序启动流程：加载 ipipfree.ipdb 与 mmdb 数据库 → 绑定监听端口 → **chroot 到启动目录并降权到 nobody** → 进入事件循环。
+
+* 数据库与共享内存、/dev/null、监听socket均在 chroot 前就绪，运行期不依赖任何文件，因此可以安全地限制在空 chroot 中。
+* 启动后无法读写任何文件、无法 setuid/提权（能力已清零），即使查询逻辑被攻陷也无法访问宿主文件系统或执行特权操作。
+* 必须以 root 启动才能进行 chroot/setuid；若以非 root 启动且未加 -u root，程序会报错退出（拒绝悄悄以当前用户继续运行）。
+* 若要关闭沙箱（例如在容器内已由容器隔离保护、或需要以特权运行），使用 `-u root`。
+* 若想降权到指定用户而非 nobody，使用 `-u 用户名`（该用户名必须存在）。
 
 ## 命令行批量查询
 

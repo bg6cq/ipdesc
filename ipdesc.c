@@ -55,6 +55,15 @@ void find(char *ip, char *result, int len)
 	result[0] = 0;
 
 // ipip.net not found, using db-ip, for ipv6
+// MMDB_lookup_string() passes the input to getaddrinfo(), which performs
+// DNS resolution on any non-IP string. In the single-threaded daemon this
+// would block the whole event loop on attacker-controlled hostnames, so
+// only strictly valid IPv4/IPv6 literals are allowed through (HIGH-1).
+
+	struct in_addr a4;
+	struct in6_addr a6;
+	if (!inet_pton(AF_INET, ip, &a4) && !inet_pton(AF_INET6, ip, &a6))
+		return;
 
 	int gai_error, mmdb_error;
 	MMDB_lookup_result_s mmdbresult = MMDB_lookup_string(&mmdb, ip, &gai_error, &mmdb_error);
