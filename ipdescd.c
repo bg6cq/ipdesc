@@ -54,7 +54,7 @@ void find(char *ip, char *result, int len)
 	*p = 0;
 	if (debug >= 2)
 		printf("find: %s\n", ip);
-	int err = ipdb_reader_find(reader, ip, "CN", result);
+	int err = ipdb_reader_find(reader, ip, "CN", result, (size_t)len);
 	if (err == 0)
 		return;
 

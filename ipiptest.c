@@ -27,7 +27,7 @@ void test(char *ip)
 	lang[1] = "EN";
 	printf("IP %s\n", ip);
 	for (int i = 0; i < 2; ++i) {
-		int err = ipdb_reader_find(reader, ip, lang[i], body);
+		int err = ipdb_reader_find(reader, ip, lang[i], body, sizeof(body));
 		printf("%s find err: %d\n", lang[i], err);
 		if (err)
 			continue;
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 		char body[512];
 		uip = rand() << 2;
 		sprintf(buf, "%u.%u.%u.%u", (uip >> 24) & 0xff, (uip >> 16) & 0xff, (uip >> 8) & 0xff, uip & 0xff);
-		ipdb_reader_find(reader, buf, "CN", body);
+		ipdb_reader_find(reader, buf, "CN", body, sizeof(body));
 	}
 	gettimeofday(&end, NULL);
 	usems = 1000.0 * (end.tv_sec - st.tv_sec) + (end.tv_usec - st.tv_usec) / 1000.0;
