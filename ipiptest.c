@@ -35,7 +35,7 @@ void test(char *ip)
 		int f = 0, p1 = 0, p2 = -1;
 		do {
 			if (*(body + p1) == '\t' || !*(body + p1)) {
-				strncpy(tmp, body + p2 + 1, (size_t) p1 - p2);
+				strncpy(tmp, body + p2 + 1, (size_t)p1 - p2);
 				tmp[p1 - p2] = 0;
 				printf("%d: %s: %s\n", f + 1, reader->meta->fields[f], tmp);
 				p2 = p1;
